@@ -1,0 +1,115 @@
+/* ==========================================================
+   theme.css —— 全项目唯一的设计强约束
+   规则：所有页面只许用这里的变量和 .btn / .card / .chip
+   不许自己定义颜色和字体。布局随便你排。
+   ========================================================== */
+
+:root {
+  --c-primary:      #1F3564;
+  --c-primary-soft: #F1F4FA;
+  --c-accent:       #C9A227;
+  --c-text:         #2E2E2E;
+  --c-muted:        #6B7280;
+  --c-bg:           #FFFFFF;
+  --c-page:         #F7F8FB;
+  --c-border:       #E3E7EF;
+  --c-ok:           #1E8E5A;
+  --c-warn:         #B8860B;
+  --c-err:          #C0392B;
+
+  --r:    10px;
+  --r-sm: 6px;
+  --shadow: 0 1px 3px rgba(31,53,100,.08), 0 10px 26px rgba(31,53,100,.06);
+  --font: "微软雅黑", "Microsoft YaHei", -apple-system, system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  font-family: var(--font);
+  color: var(--c-text);
+  background: var(--c-page);
+  font-size: 15px;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: var(--c-primary); text-decoration: none; }
+
+/* ---------- 按钮 ---------- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border: 1px solid var(--c-primary);
+  border-radius: var(--r-sm);
+  background: var(--c-primary);
+  color: #fff;
+  font-family: var(--font);
+  font-size: 14px;
+  cursor: pointer;
+  transition: opacity .15s, transform .05s;
+}
+.btn:hover  { opacity: .88; }
+.btn:active { transform: translateY(1px); }
+
+.btn.ghost {
+  background: transparent;
+  color: var(--c-primary);
+}
+.btn.ghost:hover { background: var(--c-primary-soft); }
+
+/* ---------- 卡片 ---------- */
+.card {
+  background: var(--c-bg);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r);
+  box-shadow: var(--shadow);
+  padding: 18px 20px;
+}
+
+/* ---------- 标签（困惑类型） ---------- */
+.chip {
+  display: inline-block;
+  padding: 6px 14px;
+  border: 1px solid var(--c-border);
+  border-radius: 999px;
+  background: var(--c-bg);
+  color: var(--c-text);
+  font-size: 14px;
+  cursor: pointer;
+  transition: all .15s;
+}
+.chip:hover  { border-color: var(--c-primary); color: var(--c-primary); }
+.chip.active {
+  border-color: var(--c-primary);
+  background: var(--c-primary);
+  color: #fff;
+}
+
+/* ---------- 通用文字 ---------- */
+.muted     { color: var(--c-muted); font-size: 13px; }
+.section   { margin-bottom: 20px; }
+h1, h2, h3 { color: var(--c-primary); margin: 0 0 10px; line-height: 1.35; }
+
+/* ---------- 顶部导航（各页面共用） ---------- */
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 24px;
+  background: var(--c-bg);
+  border-bottom: 1px solid var(--c-border);
+}
+.topbar .brand {
+  font-weight: 700;
+  color: var(--c-primary);
+  font-size: 16px;
+  letter-spacing: .5px;
+}
+.topbar .nav { margin-left: auto; display: flex; gap: 16px; font-size: 14px; }
+.topbar .nav a { color: var(--c-muted); }
+.topbar .nav a:hover, .topbar .nav a.on { color: var(--c-primary); }

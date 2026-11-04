@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>阅读学习伙伴</title>
+<link rel="stylesheet" href="../theme.css">
+<link rel="stylesheet" href="read.css">
+</head>
+<body>
+
+<div class="topbar">
+  <a class="brand" href="../">教育智能体</a>
+  <span class="nav"><a class="on" href="../read/">阅读</a><a href="../physics/">物理</a></span>
+</div>
+
+<div class="workspace">
+  <!-- 左：阅读区 -->
+  <section class="pane reading">
+    <div class="pane-head">
+      <span id="chapter-title">第 3 章 · 认知负荷</span>
+      <span class="muted">选中一段文字试试</span>
+    </div>
+    <article id="text" class="reading-body">
+      <p>学生在学习过程中所承受的认知负荷，可以分为三种。第一种是内在负荷，它由材料本身的复杂程度决定，无法通过教学设计消除。</p>
+      <p>The reduction in extraneous load, while necessary, is not sufficient to guarantee that learning will occur, because the learner must still engage in the effortful process of schema construction and automation.</p>
+      <p>第二种是外在负荷，由不当的呈现方式造成，是教学设计应当削减的对象。第三种是相关负荷，它是学习者主动建构图式所付出的努力。</p>
+    </article>
+  </section>
+
+  <!-- 右：对话区 -->
+  <aside class="pane chat">
+    <div class="pane-head">
+      <span>学习伙伴</span>
+      <button class="btn ghost" id="end-session" style="padding:4px 10px;font-size:13px">结束本节</button>
+    </div>
+    <div id="chat" class="chat-body">
+      <p class="muted">在左边选一段你读不懂的话。</p>
+    </div>
+  </aside>
+</div>
+
+<script src="../blocks.js"></script>
+<script src="/read/read.js"></script>
+</body>
+</html>

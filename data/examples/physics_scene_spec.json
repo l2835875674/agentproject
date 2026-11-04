@@ -1,0 +1,12 @@
+{
+  "model": "incline_conveyor",
+  "block": { "mass": 1, "initial_speed": 0, "start": "incline_top" },
+  "incline": { "angle": 37, "length": 2, "mu": 0.25 },
+  "transition": { "type": "smooth", "assumption": "速度大小不变，方向变水平" },
+  "conveyor": { "length": 3, "belt_speed": 2, "direction": "right", "mu": 0.2 },
+  "environment": { "g": 10, "air": false },
+  "questions": ["time_on_belt", "exit_speed", "heat"],
+  "display": { "forces": true, "vt_graph": true, "phases": true },
+  "assumptions": ["底端平滑连接，速度大小不变"],
+  "validate_status": "green"
+}
