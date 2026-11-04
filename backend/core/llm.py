@@ -37,3 +37,20 @@ def ask_json(messages: List[dict], temperature: float = 0.2) -> dict:
     )
     text = resp.choices[0].message.content
     return json.loads(text)
+
+
+def build_kwargs(messages, tools=None, cfg=None, stream=False):
+    """统一组装请求参数，避免各处重复。"""
+    from backend.core import settings as _s
+    cfg = cfg or _s.DEFAULT
+    kw = {
+        "model": cfg.model,
+        "messages": messages,
+        "temperature": cfg.temperature,
+        "stream": stream,
+    }
+    if tools:
+        kw["tools"] = tools
+    if cfg.reasoning_effort:
+        kw["reasoning_effort"] = cfg.reasoning_effort
+    return kw

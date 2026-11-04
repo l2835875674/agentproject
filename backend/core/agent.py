@@ -21,10 +21,7 @@ def run_turn(session_id: str, messages: List[dict],
 
     for step in range(cfg.max_steps):
         resp = llm.client().chat.completions.create(
-            model=cfg.model,
-            messages=messages,
-            temperature=cfg.temperature,
-            tools=tool_schemas,
+            **llm.build_kwargs(messages, tools=tool_schemas, cfg=cfg)
         )
         msg = resp.choices[0].message
 
@@ -70,3 +67,91 @@ def run_turn(session_id: str, messages: List[dict],
     trace.log(session_id, {"type": "max_steps_reached", "steps": cfg.max_steps})
     return {"reply": "（这一轮调用次数达到上限，先停在这里）",
             "steps": cfg.max_steps, "tool_calls": used}
+
+
+# ---------------- 流式版本 ----------------
+
+def run_turn_stream(session_id: str, messages: List[dict],
+                    domain: Optional[str] = None,
+                    cfg: Optional[settings.AgentSettings] = None):
+    """逐段产出事件，供 SSE 推给前端。
+
+    事件类型：
+      {"type": "status", "text": "..."}   进度提示
+      {"type": "delta",  "text": "..."}   正文增量
+      {"type": "tool",   "name": "..."}   调用了某工具
+      {"type": "done"}                    结束
+    """
+    cfg = cfg or settings.DEFAULT
+    tool_schemas = tools.schemas(domain) or None
+    tools.set_context({"session_id": session_id, "domain": domain})
+
+    for step in range(cfg.max_steps):
+        stream = llm.client().chat.completions.create(
+            **llm.build_kwargs(messages, tools=tool_schemas, cfg=cfg, stream=True)
+        )
+
+        content_parts: List[str] = []
+        calls: dict = {}
+        said_thinking = False
+
+        for chunk in stream:
+            if not chunk.choices:
+                continue
+            delta = chunk.choices[0].delta
+
+            if getattr(delta, "reasoning_content", None) and not said_thinking:
+                said_thinking = True
+                yield {"type": "status", "text": "思考中…"}
+
+            if delta.content:
+                content_parts.append(delta.content)
+                yield {"type": "delta", "text": delta.content}
+
+            if delta.tool_calls:
+                for tc in delta.tool_calls:
+                    slot = calls.setdefault(tc.index, {"id": "", "name": "", "arguments": ""})
+                    if tc.id:
+                        slot["id"] = tc.id
+                    if tc.function:
+                        if tc.function.name:
+                            slot["name"] += tc.function.name
+                        if tc.function.arguments:
+                            slot["arguments"] += tc.function.arguments
+
+        # 没有工具调用 → 这一轮结束
+        if not calls:
+            trace.log(session_id, {"step": step, "type": "reply",
+                                   "content": "".join(content_parts)})
+            yield {"type": "done"}
+            return
+
+        # 有工具调用：把请求记回对话，执行后继续
+        messages.append({
+            "role": "assistant",
+            "content": "".join(content_parts),
+            "tool_calls": [
+                {"id": v["id"], "type": "function",
+                 "function": {"name": v["name"], "arguments": v["arguments"]}}
+                for v in calls.values()
+            ],
+        })
+
+        for v in calls.values():
+            try:
+                args = json.loads(v["arguments"] or "{}")
+            except json.JSONDecodeError:
+                args = {}
+            outcome = tools.call(v["name"], args)
+            trace.log(session_id, {"step": step, "type": "tool_call",
+                                   "name": v["name"], "args": args,
+                                   "ok": outcome.get("ok")})
+            yield {"type": "tool", "name": v["name"], "ok": outcome.get("ok")}
+            messages.append({
+                "role": "tool",
+                "tool_call_id": v["id"],
+                "content": json.dumps(outcome, ensure_ascii=False),
+            })
+
+    yield {"type": "status", "text": "（达到步数上限，先停在这里）"}
+    yield {"type": "done"}

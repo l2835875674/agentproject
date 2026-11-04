@@ -110,10 +110,26 @@ async function ask({ type = null, text = null }) {
   if (shown) addBubble(shown, true);
 
   setBusy(true);
-  const pending = addBubble('思考中…', false);
+
+  const status = document.createElement('div');
+  status.className = 'muted';
+  status.textContent = '连接中…';
+  chat.appendChild(status);
+  scrollDown();
+
+  let bubbleText = null;     // 正在流式写入的气泡里的 <span>
+  let answer = '';           // 累积的正文
+  const toolNames = [];
+
+  function ensureBubble() {
+    if (bubbleText) return;
+    const wrap = addBubble('', false);
+    bubbleText = wrap.querySelector('span');
+    status.remove();
+  }
 
   try {
-    const res = await fetch('/api/read/ask', {
+    const res = await fetch('/api/read/ask_stream', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -122,28 +138,62 @@ async function ask({ type = null, text = null }) {
         confusion_type: type,
         chapter_title: chapterEl.textContent,
         message: text,
-        history
+        history,
+        reasoning_effort: prefs.reasoning_effort || null,
+        system_prompt: prefs.system_prompt || null
       })
     });
-    const data = await res.json();
-    const reply = data.reply || '（没有回复）';
+    if (!res.ok || !res.body) throw new Error('HTTP ' + res.status);
 
-    pending.remove();
-    addBubble(reply, false);
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder('utf-8');
+    let buf = '';
 
-    if (data.tool_calls && data.tool_calls.length) {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+
+      const parts = buf.split('\n\n');
+      buf = parts.pop();
+
+      for (const part of parts) {
+        const line = part.trim();
+        if (!line.startsWith('data:')) continue;
+        let ev;
+        try { ev = JSON.parse(line.slice(5).trim()); } catch (e) { continue; }
+
+        if (ev.type === 'status') {
+          if (!bubbleText) status.textContent = ev.text;
+        } else if (ev.type === 'delta') {
+          ensureBubble();
+          answer += ev.text;
+          bubbleText.textContent = answer;
+          scrollDown();
+        } else if (ev.type === 'tool') {
+          toolNames.push(ev.name);
+          if (!bubbleText) status.textContent = '查了一下你的档案…';
+        } else if (ev.type === 'done') {
+          // 收尾
+        }
+      }
+    }
+
+    status.remove();
+    if (!bubbleText) addBubble('（没有回复）', false);
+
+    if (toolNames.length) {
       const meta = document.createElement('div');
       meta.className = 'muted';
       meta.style.marginTop = '-6px';
-      meta.textContent = '本轮调用了工具：' + data.tool_calls.map(t => t.name).join('、');
+      meta.textContent = '本轮调用了工具：' + toolNames.join('、');
       chat.appendChild(meta);
     }
 
-    // 记进历史，支持多轮追问
     history.push({ role: 'user', content: shown || '（继续追问）' });
-    history.push({ role: 'assistant', content: reply });
+    history.push({ role: 'assistant', content: answer });
   } catch (err) {
-    pending.remove();
+    status.remove();
     addBubble('调用失败：' + err.message, false);
   } finally {
     setBusy(false);
@@ -213,3 +263,71 @@ document.getElementById('end-session').onclick = async () => {
   chat.appendChild(box);
   scrollDown();
 };
+
+/* ---------- 设置面板 ---------- */
+
+const SETTINGS_KEY = 'read.settings.v1';
+const mask = document.getElementById('settings-mask');
+const effortSel = document.getElementById('set-effort');
+const promptBox = document.getElementById('set-prompt');
+
+let prefs = loadPrefs();
+let defaultPrompt = '';
+let defaultsLoaded = false;
+
+function loadPrefs() {
+  try { return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {}; }
+  catch (e) { return {}; }
+}
+
+function savePrefs(p) {
+  prefs = p;
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify(p));
+}
+
+async function ensureDefaults() {
+  if (defaultsLoaded) return;
+  try {
+    const res = await fetch('/api/read/settings');
+    defaultPrompt = (await res.json()).system_prompt || '';
+    defaultsLoaded = true;
+  } catch (e) {
+    defaultPrompt = '';
+  }
+}
+
+document.getElementById('open-settings').onclick = async () => {
+  await ensureDefaults();
+  effortSel.value = prefs.reasoning_effort || 'off';
+  promptBox.value = prefs.system_prompt || defaultPrompt;
+  mask.hidden = false;
+  promptBox.focus();
+};
+
+document.getElementById('close-settings').onclick = () => { mask.hidden = true; };
+
+mask.addEventListener('click', e => {
+  if (e.target === mask) mask.hidden = true;
+});
+
+document.getElementById('save-settings').onclick = () => {
+  const prompt = promptBox.value.trim();
+  savePrefs({
+    reasoning_effort: effortSel.value,
+    // 与默认一致就不存，永远跟随后端最新版
+    system_prompt: prompt === defaultPrompt.trim() ? '' : prompt
+  });
+  mask.hidden = true;
+  addBubble('设置已保存。', false);
+};
+
+document.getElementById('reset-settings').onclick = async () => {
+  await ensureDefaults();
+  savePrefs({});
+  effortSel.value = 'off';
+  promptBox.value = defaultPrompt;
+};
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && !mask.hidden) mask.hidden = true;
+});

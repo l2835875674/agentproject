@@ -71,3 +71,73 @@
 .composer textarea:focus { border-color: var(--c-primary); }
 .composer .btn { height: 38px; padding: 0 18px; }
 .composer .btn:disabled { opacity: .45; cursor: not-allowed; }
+
+/* ---------- 设置面板 ---------- */
+.mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 28, 45, .38);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+  padding: 20px;
+}
+.mask[hidden] { display: none; }
+
+.modal {
+  width: min(680px, 100%);
+  max-height: 88vh;
+  overflow-y: auto;
+  background: var(--c-bg);
+  border-radius: var(--r);
+  box-shadow: 0 20px 60px rgba(31,53,100,.28);
+  padding: 22px 24px 20px;
+}
+
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+.modal-head h3 { margin: 0; }
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-bottom: 18px;
+}
+.field > span:first-child {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--c-primary);
+}
+.field select,
+.field textarea {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+  font-family: var(--font);
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--c-text);
+  background: var(--c-bg);
+  outline: none;
+  resize: vertical;
+}
+.field select:focus,
+.field textarea:focus { border-color: var(--c-primary); }
+.field textarea { font-family: Consolas, "微软雅黑", monospace; font-size: 12.5px; }
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 4px;
+  border-top: 1px solid var(--c-border);
+  margin-top: 6px;
+  padding-top: 16px;
+}

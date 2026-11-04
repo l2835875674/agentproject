@@ -2,10 +2,14 @@
 
 只需实现五个函数 + 一个 router，不必关心 core 内部怎么实现。
 """
+import json
+from dataclasses import replace
+
 from fastapi import APIRouter
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from backend.core import agent, storage
+from backend.core import agent, settings, storage
 from backend.domains.read import engine, prompts, schema, tools as read_tools
 from backend.domains.read import to_view as tv
 
@@ -68,18 +72,44 @@ LEVEL_BY_TYPE = {
 }
 
 
+def archive_brief(session_id: str) -> str:
+    """把学习档案压成几行直接塞进 system，省掉"查询"那一整轮请求。"""
+    state = storage.load_state(NAME, session_id) or {}
+    concepts = state.get("concepts", [])
+    if not concepts:
+        return "（还没有任何记录。如果涉及新概念，用 add_concept 建档。）"
+
+    label = {"unresolved": "未解决", "shaky": "半懂", "mastered": "能自释"}
+    lines = []
+    for c in concepts[:12]:                       # 只带最近的 12 条，避免过长
+        line = f"- {c['term']}"
+        if c.get("term_en"):
+            line += f"（{c['term_en']}）"
+        line += f" — {label.get(c['status'], c['status'])}"
+        if c.get("learner_explanation"):
+            line += f'；他之前的原话：「{c["learner_explanation"][:40]}」'
+        lines.append(line)
+    if len(concepts) > 12:
+        lines.append(f"- ……另有 {len(concepts) - 12} 个概念未列出")
+    return "\n".join(lines)
+
+
 def build_messages(span: str, confusion_type: str | None, chapter_title: str,
-                   user_message: str | None) -> list:
+                   user_message: str | None, session_id: str = "",
+                   system_prompt: str | None = None) -> list:
     if confusion_type:
         strategy = prompts.BY_CONFUSION.get(confusion_type, "")
         level = LEVEL_BY_TYPE.get(confusion_type, 2)
         type_line = f"【他卡在哪一类】{strategy}"
     else:
-        # 学习者直接打字提问：自己不知道卡在哪，正好交给模型判断
+        # 学习者直接打字提问：正常回答，不绕圈子
         level = 2
-        type_line = f"【他没有归类，直接提问】\n{prompts.FREE_QUESTION}"
+        type_line = f"【他直接提问】\n{prompts.FREE_QUESTION}"
 
-    system = f"""{prompts.SYSTEM}
+    brief = archive_brief(session_id) if session_id else "（无）"
+    base_prompt = (system_prompt or "").strip() or prompts.SYSTEM
+
+    system = f"""{base_prompt}
 
 【当前章节】{chapter_title or "（未标注）"}
 
@@ -91,10 +121,12 @@ def build_messages(span: str, confusion_type: str | None, chapter_title: str,
 【这一轮该用的支架层级】
 {prompts.level_instruction(level)}
 
-【档案工具】
-你可以用 get_concept / list_concepts / get_hint_level 查询学习者之前的理解，
-用 add_concept / record_confusion 记录这一轮，
-用 update_concept_status 请求改变状态——但改不改由系统判定，被拒绝就如实告诉学习者。
+【学习者档案】（已直接给你，不需要再查询）
+{brief}
+
+【可用工具】
+add_concept 建档、record_confusion 记困惑、
+update_concept_status 请求改状态（改不改由系统判定，被拒绝就如实告诉学习者）。
 """
 
     user = user_message or "（学习者刚刚选中了这段文字，还没有说话）"
@@ -122,17 +154,63 @@ class AskIn(BaseModel):
     chapter_title: str = ""
     message: str | None = None
     history: list[dict] | None = None    # 之前的对话，用于多轮追问
+    # 前端设置面板可覆盖
+    reasoning_effort: str | None = None  # off / low / medium
+    system_prompt: str | None = None
+
+
+def _prepare(inp: "AskIn") -> list:
+    messages = build_messages(inp.span, inp.confusion_type,
+                              inp.chapter_title, inp.message,
+                              session_id=inp.session_id,
+                              system_prompt=inp.system_prompt)
+    if inp.history:
+        # 多轮追问：保留当前 system，接上之前的对话，再接本轮提问
+        messages = [messages[0]] + inp.history + [messages[-1]]
+    return messages
+
+
+def _cfg(inp: "AskIn"):
+    """按前端设置覆盖默认参数；没传就用默认。"""
+    base = settings.TAGGED if inp.confusion_type else settings.FREE
+    if inp.reasoning_effort in ("off", "low", "medium"):
+        return replace(base, reasoning_effort=inp.reasoning_effort)
+    return base
+
+
+@router.get("/settings")
+def get_settings():
+    """设置面板要用的默认值。"""
+    return {
+        "system_prompt": prompts.SYSTEM,
+        "reasoning_effort": settings.FREE.reasoning_effort,
+        "model": settings.FREE.model,
+        "options": ["off", "low", "medium"],
+    }
 
 
 @router.post("/ask")
 def ask(inp: AskIn):
-    """学习者点了某个困惑标签之后，跑一轮真正的 agent。"""
-    messages = build_messages(inp.span, inp.confusion_type,
-                              inp.chapter_title, inp.message)
-    if inp.history:
-        # 多轮追问：保留当前 system，接上之前的对话，再接本轮提问
-        messages = [messages[0]] + inp.history + [messages[-1]]
-    return agent.run_turn(inp.session_id, messages, domain=NAME)
+    """非流式版本（调试用）。"""
+    return agent.run_turn(inp.session_id, _prepare(inp), domain=NAME, cfg=_cfg(inp))
+
+
+@router.post("/ask_stream")
+def ask_stream(inp: AskIn):
+    """流式版本：边想边说，前端逐字显示。"""
+    cfg = _cfg(inp)
+    messages = _prepare(inp)
+
+    def gen():
+        for ev in agent.run_turn_stream(inp.session_id, messages,
+                                        domain=NAME, cfg=cfg):
+            yield "data: " + json.dumps(ev, ensure_ascii=False) + "\n\n"
+
+    return StreamingResponse(
+        gen(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 class TransitionIn(BaseModel):

@@ -32,7 +32,10 @@
   <aside class="pane chat">
     <div class="pane-head">
       <span>学习伙伴</span>
-      <button class="btn ghost" id="end-session" style="padding:4px 10px;font-size:13px">结束本节</button>
+      <span style="display:flex;gap:8px">
+        <button class="btn ghost" id="open-settings" style="padding:4px 10px;font-size:13px">设置</button>
+        <button class="btn ghost" id="end-session" style="padding:4px 10px;font-size:13px">结束本节</button>
+      </span>
     </div>
     <div id="chat" class="chat-body">
       <p class="muted">在左边选一段你读不懂的话，或者直接在下面打字问。</p>
@@ -45,7 +48,38 @@
   </aside>
 </div>
 
+<!-- 设置面板 -->
+<div id="settings-mask" class="mask" hidden>
+  <div class="modal">
+    <div class="modal-head">
+      <h3>设置</h3>
+      <button class="btn ghost" id="close-settings" style="padding:2px 10px">关闭</button>
+    </div>
+
+    <label class="field">
+      <span>思考程度</span>
+      <select id="set-effort">
+        <option value="off">关闭 — 最快，适合直接问答</option>
+        <option value="low">低 — 稍微想一下</option>
+        <option value="medium">中 — 需要判断学习者卡在哪时用</option>
+      </select>
+      <span class="muted">越高越慢。实测：off 约 7 秒，low 约 12 秒。</span>
+    </label>
+
+    <label class="field">
+      <span>系统提示词</span>
+      <textarea id="set-prompt" rows="12" spellcheck="false"></textarea>
+      <span class="muted">模型的角色设定。保存后立刻生效，刷新页面仍保留。</span>
+    </label>
+
+    <div class="modal-actions">
+      <button class="btn ghost" id="reset-settings">恢复默认</button>
+      <button class="btn" id="save-settings">保存</button>
+    </div>
+  </div>
+</div>
+
 <script src="../blocks.js"></script>
-<script src="/read/read.js"></script>
+<script src="read.js"></script>
 </body>
 </html>

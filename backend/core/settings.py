@@ -8,8 +8,14 @@ from backend.config import MODEL
 class AgentSettings:
     model: str = MODEL
     temperature: float = 0.7
-    max_steps: int = 6          # agent 循环上限，防跑飞
-    reasoning_effort: str | None = None   # 部分模型支持 low/medium/high
+    max_steps: int = 5              # agent 循环上限，防跑飞
+    reasoning_effort: str | None = "low"   # off / low / medium，越低越快
 
 
 DEFAULT = AgentSettings()
+
+# 点标签 = 需要判断学习者卡在哪一层，稍微多想想
+TAGGED = AgentSettings(reasoning_effort="low")
+
+# 直接打字 = 正常问答，不需要长思考
+FREE = AgentSettings(reasoning_effort="off")

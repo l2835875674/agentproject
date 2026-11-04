@@ -125,20 +125,9 @@ def register_all() -> None:
          "required": ["span", "confusion_type"]},
         record_confusion, domain=NAME,
     )
-    tools.register(
-        "get_concept", "查某个概念在档案里的状态和学习者之前的原话解释。",
-        {"type": "object", "properties": {"term": {"type": "string"}},
-         "required": ["term"]},
-        get_concept, domain=NAME,
-    )
-    tools.register(
-        "list_concepts", "列出档案里所有概念及其状态。",
-        {"type": "object", "properties": {}},
-        list_concepts, domain=NAME,
-    )
-    tools.register(
-        "get_hint_level", "查询该给几层支架（1 直讲 / 2 给提示 / 3 先自述）。由系统决定，不要自己猜。",
-        {"type": "object", "properties": {"term": {"type": "string"}},
-         "required": ["term"]},
-        get_hint_level, domain=NAME,
-    )
+    # 下面三个函数保留给代码内部使用，不再暴露成模型工具——
+    # 档案摘要已经直接写进 system prompt，问一次就够了。
+    # 少一个工具 = 少一轮请求 = 少 3~6 秒。
+    #
+    #   get_concept / list_concepts  → 见 module.archive_brief()
+    #   get_hint_level               → 见 module.LEVEL_BY_TYPE / engine.next_default_level()
