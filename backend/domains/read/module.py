@@ -68,19 +68,25 @@ LEVEL_BY_TYPE = {
 }
 
 
-def build_messages(span: str, confusion_type: str, chapter_title: str,
+def build_messages(span: str, confusion_type: str | None, chapter_title: str,
                    user_message: str | None) -> list:
-    strategy = prompts.BY_CONFUSION.get(confusion_type, "")
-    level = LEVEL_BY_TYPE.get(confusion_type, 2)
+    if confusion_type:
+        strategy = prompts.BY_CONFUSION.get(confusion_type, "")
+        level = LEVEL_BY_TYPE.get(confusion_type, 2)
+        type_line = f"【他卡在哪一类】{strategy}"
+    else:
+        # 学习者直接打字提问：自己不知道卡在哪，正好交给模型判断
+        level = 2
+        type_line = f"【他没有归类，直接提问】\n{prompts.FREE_QUESTION}"
 
     system = f"""{prompts.SYSTEM}
 
 【当前章节】{chapter_title or "（未标注）"}
 
 【学习者选中的原文】
-{span}
+{span or "（这次没有选中具体段落，他直接提问）"}
 
-【他卡在哪一类】{strategy}
+{type_line}
 
 【这一轮该用的支架层级】
 {prompts.level_instruction(level)}
@@ -111,10 +117,11 @@ def select(inp: SelectIn):
 
 class AskIn(BaseModel):
     session_id: str
-    span: str
-    confusion_type: str
+    span: str = ""
+    confusion_type: str | None = None    # 不填 = 学习者直接打字提问
     chapter_title: str = ""
     message: str | None = None
+    history: list[dict] | None = None    # 之前的对话，用于多轮追问
 
 
 @router.post("/ask")
@@ -122,6 +129,9 @@ def ask(inp: AskIn):
     """学习者点了某个困惑标签之后，跑一轮真正的 agent。"""
     messages = build_messages(inp.span, inp.confusion_type,
                               inp.chapter_title, inp.message)
+    if inp.history:
+        # 多轮追问：保留当前 system，接上之前的对话，再接本轮提问
+        messages = [messages[0]] + inp.history + [messages[-1]]
     return agent.run_turn(inp.session_id, messages, domain=NAME)
 
 

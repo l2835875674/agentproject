@@ -44,3 +44,30 @@
   flex: 1;
 }
 .chat-body > * { margin-bottom: 16px; }
+
+/* 输入区 */
+.composer {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  padding: 12px 14px;
+  border-top: 1px solid var(--c-border);
+  background: var(--c-bg);
+}
+.composer textarea {
+  flex: 1;
+  min-height: 38px;
+  max-height: 120px;
+  padding: 9px 12px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+  font-family: var(--font);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--c-text);
+  resize: none;
+  outline: none;
+}
+.composer textarea:focus { border-color: var(--c-primary); }
+.composer .btn { height: 38px; padding: 0 18px; }
+.composer .btn:disabled { opacity: .45; cursor: not-allowed; }
