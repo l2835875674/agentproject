@@ -1,6 +1,16 @@
 /* 阅读模块前端。负责人：阅读模块开发者。
    铁律：不写死后端地址，一律用相对路径 /api/... */
 
+/* 用文件方式打开时，接口一定用不了——直接说清楚，别让人猜 */
+if (location.protocol === 'file:') {
+  document.body.insertAdjacentHTML('afterbegin',
+    '<div style="background:#C0392B;color:#fff;padding:10px 16px;font-size:14px;line-height:1.7">' +
+    '⚠ 当前是用「文件方式」打开的，后端接口不可用，只能看界面。<br>' +
+    '请双击项目根目录的 <b>启动.bat</b>，然后访问 ' +
+    '<a href="http://localhost:8000/read/" style="color:#fff;text-decoration:underline">' +
+    'http://localhost:8000/read/</a></div>');
+}
+
 const chat = document.getElementById('chat');
 const textEl = document.getElementById('text');
 const chapterEl = document.getElementById('chapter-title');
