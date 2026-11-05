@@ -8,18 +8,18 @@ from backend.domains.read import engine
 NAME = "read"
 
 
-def _sid() -> str:
-    return tools.get_context().get("session_id", "default")
+def _sid(session_id: str | None = None) -> str:
+    return session_id or tools.get_context().get("session_id", "default")
 
 
-def _load() -> dict:
-    return storage.load_state(NAME, _sid()) or {
+def _load(session_id: str | None = None) -> dict:
+    return storage.load_state(NAME, _sid(session_id)) or {
         "book": "", "concepts": [], "confusions": [], "profile": {}
     }
 
 
-def _save(state: dict) -> None:
-    storage.save_state(NAME, _sid(), state)
+def _save(state: dict, session_id: str | None = None) -> None:
+    storage.save_state(NAME, _sid(session_id), state)
 
 
 # ---------------- 工具实现 ----------------
@@ -57,13 +57,19 @@ def add_concept(term: str, term_en: str = "", chapter: int = 0) -> dict:
     return {"ok": True, "term": term}
 
 
-def record_confusion(span: str, confusion_type: str, chapter: int = 0) -> dict:
+def record_confusion(span: str, confusion_type: str, chapter: int = 0,
+                     session_id: str | None = None) -> dict:
+    """记录一次困惑。
+
+    不再暴露给模型——span 和 confusion_type 前端本来就给了，
+    由代码直接写，省掉一轮工具往返。
+    """
     from backend.domains.read import schema
     if confusion_type not in schema.CONFUSION_TYPES:
         return {"ok": False, "reason": f"未知困惑类型: {confusion_type}"}
-    state = _load()
+    state = _load(session_id)
     state["confusions"].append(schema.new_confusion(span, confusion_type, chapter))
-    _save(state)
+    _save(state, session_id)
     return {"ok": True}
 
 
@@ -114,17 +120,7 @@ def register_all() -> None:
          "required": ["term"]},
         add_concept, domain=NAME,
     )
-    tools.register(
-        "record_confusion", "记录一次困惑。type 必须是六种之一。",
-        {"type": "object",
-         "properties": {"span": {"type": "string"},
-                        "confusion_type": {"type": "string",
-                                           "enum": ["term", "syntax", "logic_jump",
-                                                    "background", "tone", "cant_say"]},
-                        "chapter": {"type": "integer"}},
-         "required": ["span", "confusion_type"]},
-        record_confusion, domain=NAME,
-    )
+    # record_confusion 不再作为工具暴露：span 和 type 前端已给，代码直接写。
     # 下面三个函数保留给代码内部使用，不再暴露成模型工具——
     # 档案摘要已经直接写进 system prompt，问一次就够了。
     # 少一个工具 = 少一轮请求 = 少 3~6 秒。

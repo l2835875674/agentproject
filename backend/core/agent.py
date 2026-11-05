@@ -3,9 +3,17 @@
 这是整个项目"模型只能提议、不能决定"的落地处。
 """
 import json
+import time
 from typing import List, Optional
 
 from backend.core import llm, settings, tools, trace
+
+# 预算用尽时的强制收尾提示：不给工具，逼模型给结论
+FORCE_FINISH = {
+    "role": "user",
+    "content": "（系统提示：这一轮的工具调用已经结束。"
+               "请基于目前掌握的信息，直接用中文给出回答，不要再调用任何工具。）",
+}
 
 
 def run_turn(session_id: str, messages: List[dict],
@@ -85,8 +93,14 @@ def run_turn_stream(session_id: str, messages: List[dict],
     cfg = cfg or settings.DEFAULT
     tool_schemas = tools.schemas(domain) or None
     tools.set_context({"session_id": session_id, "domain": domain})
+    t0 = time.time()
 
     for step in range(cfg.max_steps):
+        # 时间预算用尽 → 强制收尾
+        if time.time() - t0 > cfg.max_seconds:
+            yield {"type": "status", "text": "时间到，正在收尾…"}
+            yield from _force_finish(session_id, messages, cfg)
+            return
         stream = llm.client().chat.completions.create(
             **llm.build_kwargs(messages, tools=tool_schemas, cfg=cfg, stream=True)
         )
@@ -153,5 +167,28 @@ def run_turn_stream(session_id: str, messages: List[dict],
                 "content": json.dumps(outcome, ensure_ascii=False),
             })
 
-    yield {"type": "status", "text": "（达到步数上限，先停在这里）"}
+    # 步数用尽 → 不给工具，逼模型给结论
+    yield {"type": "status", "text": "步数用尽，正在收尾…"}
+    yield from _force_finish(session_id, messages, cfg)
+
+
+def _force_finish(session_id: str, messages: List[dict],
+                  cfg: settings.AgentSettings):
+    """预算用尽时的兜底：不带任何工具再问一次，强制输出结论。"""
+    try:
+        stream = llm.client().chat.completions.create(
+            **llm.build_kwargs(messages + [FORCE_FINISH], tools=None, cfg=cfg, stream=True)
+        )
+        parts: List[str] = []
+        for chunk in stream:
+            if not chunk.choices:
+                continue
+            delta = chunk.choices[0].delta
+            if delta.content:
+                parts.append(delta.content)
+                yield {"type": "delta", "text": delta.content}
+        trace.log(session_id, {"type": "forced_finish", "content": "".join(parts)})
+    except Exception as e:
+        yield {"type": "delta", "text": f"（收尾失败：{e}）"}
+        trace.log(session_id, {"type": "forced_finish_error", "error": str(e)})
     yield {"type": "done"}

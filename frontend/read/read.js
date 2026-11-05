@@ -48,11 +48,13 @@ function addBubble(text, mine) {
   return wrap;
 }
 
+let controller = null;
+
 function setBusy(v) {
   busy = v;
-  sendBtn.disabled = v;
   composer.disabled = v;
-  sendBtn.textContent = v ? '…' : '发送';
+  sendBtn.textContent = v ? '停止' : '发送';
+  sendBtn.disabled = false;     // 忙碌时按钮变「停止」，仍然可点
 }
 
 /* ---------- 选中文字 → 六个标签 ---------- */
@@ -128,10 +130,13 @@ async function ask({ type = null, text = null }) {
     status.remove();
   }
 
+  controller = new AbortController();
+
   try {
     const res = await fetch('/api/read/ask_stream', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      signal: controller.signal,
       body: JSON.stringify({
         session_id: sessionId,
         span: lastSpan,
@@ -194,8 +199,17 @@ async function ask({ type = null, text = null }) {
     history.push({ role: 'assistant', content: answer });
   } catch (err) {
     status.remove();
-    addBubble('调用失败：' + err.message, false);
+    if (err.name === 'AbortError') {
+      const tip = document.createElement('div');
+      tip.className = 'muted';
+      tip.textContent = answer ? '（已停止）' : '（已取消）';
+      if (bubbleText) chat.appendChild(tip);
+      else addBubble('（已取消）', false);
+    } else {
+      addBubble('调用失败：' + err.message, false);
+    }
   } finally {
+    controller = null;
     setBusy(false);
     scrollDown();
   }
@@ -224,7 +238,10 @@ function send() {
   ask({ type: null, text });
 }
 
-sendBtn.onclick = send;
+sendBtn.onclick = () => {
+  if (busy) { if (controller) controller.abort(); return; }
+  send();
+};
 
 composer.addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey) {

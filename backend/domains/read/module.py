@@ -96,7 +96,8 @@ def archive_brief(session_id: str) -> str:
 
 def build_messages(span: str, confusion_type: str | None, chapter_title: str,
                    user_message: str | None, session_id: str = "",
-                   system_prompt: str | None = None) -> list:
+                   system_prompt: str | None = None,
+                   followup: bool = False) -> list:
     if confusion_type:
         strategy = prompts.BY_CONFUSION.get(confusion_type, "")
         level = LEVEL_BY_TYPE.get(confusion_type, 2)
@@ -105,6 +106,10 @@ def build_messages(span: str, confusion_type: str | None, chapter_title: str,
         # 学习者直接打字提问：正常回答，不绕圈子
         level = 2
         type_line = f"【他直接提问】\n{prompts.FREE_QUESTION}"
+
+    # 追问时不重复"诊断任务"，否则模型会重新开场
+    if followup:
+        type_line = (prompts.FOLLOWUP + "\n\n【最初的卡点，仅供背景】\n" + type_line)
 
     brief = archive_brief(session_id) if session_id else "（无）"
     base_prompt = (system_prompt or "").strip() or prompts.SYSTEM
@@ -125,8 +130,9 @@ def build_messages(span: str, confusion_type: str | None, chapter_title: str,
 {brief}
 
 【可用工具】
-add_concept 建档、record_confusion 记困惑、
-update_concept_status 请求改状态（改不改由系统判定，被拒绝就如实告诉学习者）。
+add_concept 建档、update_concept_status 请求改状态
+（改不改由系统判定，被拒绝就如实告诉学习者）。
+困惑记录由系统自动写入，你不需要处理。
 """
 
     user = user_message or "（学习者刚刚选中了这段文字，还没有说话）"
@@ -160,14 +166,26 @@ class AskIn(BaseModel):
 
 
 def _prepare(inp: "AskIn") -> list:
+    followup = bool(inp.history)
     messages = build_messages(inp.span, inp.confusion_type,
                               inp.chapter_title, inp.message,
                               session_id=inp.session_id,
-                              system_prompt=inp.system_prompt)
-    if inp.history:
+                              system_prompt=inp.system_prompt,
+                              followup=followup)
+    if followup:
         # 多轮追问：保留当前 system，接上之前的对话，再接本轮提问
         messages = [messages[0]] + inp.history + [messages[-1]]
     return messages
+
+
+def _auto_record(inp: "AskIn") -> None:
+    """困惑记录由代码直接写，不占用模型的一轮工具调用。"""
+    if inp.confusion_type and inp.span and not inp.history:
+        try:
+            read_tools.record_confusion(inp.span, inp.confusion_type, 0,
+                                        session_id=inp.session_id)
+        except Exception:
+            pass
 
 
 def _cfg(inp: "AskIn"):
@@ -192,12 +210,14 @@ def get_settings():
 @router.post("/ask")
 def ask(inp: AskIn):
     """非流式版本（调试用）。"""
+    _auto_record(inp)
     return agent.run_turn(inp.session_id, _prepare(inp), domain=NAME, cfg=_cfg(inp))
 
 
 @router.post("/ask_stream")
 def ask_stream(inp: AskIn):
     """流式版本：边想边说，前端逐字显示。"""
+    _auto_record(inp)
     cfg = _cfg(inp)
     messages = _prepare(inp)
 

@@ -8,7 +8,8 @@ from backend.config import MODEL
 class AgentSettings:
     model: str = MODEL
     temperature: float = 0.7
-    max_steps: int = 5              # agent 循环上限，防跑飞
+    max_steps: int = 5              # 循环步数上限
+    max_seconds: float = 60.0       # 单轮墙钟上限，防止卡死
     reasoning_effort: str | None = "low"   # off / low / medium，越低越快
 
 
