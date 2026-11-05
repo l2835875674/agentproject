@@ -121,6 +121,7 @@ async function ask({ type = null, text = null }) {
 
   let bubbleText = null;     // 正在流式写入的气泡里的 <span>
   let answer = '';           // 累积的正文
+  let failed = false;
   const toolNames = [];
 
   function ensureBubble() {
@@ -178,6 +179,10 @@ async function ask({ type = null, text = null }) {
         } else if (ev.type === 'tool') {
           toolNames.push(ev.name);
           if (!bubbleText) status.textContent = '查了一下你的档案…';
+        } else if (ev.type === 'error') {
+          status.remove();
+          addBubble('出错了：' + ev.message, false);
+          failed = true;
         } else if (ev.type === 'done') {
           // 收尾
         }
@@ -185,7 +190,8 @@ async function ask({ type = null, text = null }) {
     }
 
     status.remove();
-    if (!bubbleText) addBubble('（没有回复）', false);
+    if (!failed && !bubbleText) addBubble('（没有回复）', false);
+    if (failed) { setBusy(false); scrollDown(); return; }
 
     if (toolNames.length) {
       const meta = document.createElement('div');

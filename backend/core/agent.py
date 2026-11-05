@@ -79,6 +79,19 @@ def run_turn(session_id: str, messages: List[dict],
 
 # ---------------- 流式版本 ----------------
 
+def _iter_stream(stream):
+    """把流包一层：正常产出 (chunk, None)，出错产出 (None, 错误信息)。
+
+    这样流式中途断开也能给用户一个明确说法，而不是静默失败。
+    """
+    try:
+        for chunk in stream:
+            yield chunk, None
+    except Exception as e:
+        yield None, f"{type(e).__name__}: {e}"
+
+
+
 def run_turn_stream(session_id: str, messages: List[dict],
                     domain: Optional[str] = None,
                     cfg: Optional[settings.AgentSettings] = None):
@@ -101,15 +114,24 @@ def run_turn_stream(session_id: str, messages: List[dict],
             yield {"type": "status", "text": "时间到，正在收尾…"}
             yield from _force_finish(session_id, messages, cfg)
             return
-        stream = llm.client().chat.completions.create(
-            **llm.build_kwargs(messages, tools=tool_schemas, cfg=cfg, stream=True)
-        )
+        try:
+            stream = llm.client().chat.completions.create(
+                **llm.build_kwargs(messages, tools=tool_schemas, cfg=cfg, stream=True)
+            )
+        except Exception as e:
+            trace.log(session_id, {"step": step, "type": "llm_error", "error": str(e)})
+            yield {"type": "error", "message": f"模型调用失败：{e}"}
+            return
 
         content_parts: List[str] = []
         calls: dict = {}
         said_thinking = False
 
-        for chunk in stream:
+        for chunk, err in _iter_stream(stream):
+            if err is not None:
+                trace.log(session_id, {"step": step, "type": "stream_error", "error": err})
+                yield {"type": "error", "message": f"流式读取中断：{err}"}
+                return
             if not chunk.choices:
                 continue
             delta = chunk.choices[0].delta

@@ -222,9 +222,15 @@ def ask_stream(inp: AskIn):
     messages = _prepare(inp)
 
     def gen():
-        for ev in agent.run_turn_stream(inp.session_id, messages,
-                                        domain=NAME, cfg=cfg):
-            yield "data: " + json.dumps(ev, ensure_ascii=False) + "\n\n"
+        try:
+            for ev in agent.run_turn_stream(inp.session_id, messages,
+                                            domain=NAME, cfg=cfg):
+                yield "data: " + json.dumps(ev, ensure_ascii=False) + "\n\n"
+        except Exception as e:
+            # 任何未预期的异常都要告诉前端，不要静默断流
+            yield "data: " + json.dumps(
+                {"type": "error", "message": f"{type(e).__name__}: {e}"},
+                ensure_ascii=False) + "\n\n"
 
     return StreamingResponse(
         gen(),
